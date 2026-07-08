@@ -2,4 +2,3 @@ claim_id,patient_name,policy_number,diagnosis_code,treatment_description,date_of
 CLM-2001,Sarah Mitchell,POL-8841,J45.909,Nebulizer treatment and follow-up consultation for asthma exacerbation,6/21/2026,280,urspvs@yahoo.com,APPROVE
 CLM-2003,Amanda Torres,POL-5519,Z41.1,"Elective cosmetic rhinoplasty, no medical necessity documented",6/21/2026,8500,urspvs@yahoo.com,REJECT
 CLM-2005,Lisa Park,POL-6610,R10.9,General treatment provided,6/21/2026,3200,urspvs@yahoo,MANUAL_REVIEW
-,,,,,,,,
