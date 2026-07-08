@@ -1,0 +1,639 @@
+{
+  "name": "Healthcare Claims Multi-Agent System (Batch Job)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-1",
+      "name": "Run Batch Job",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "D:/Hackathon/Files/sample_claims.csv",
+        "options": {}
+      },
+      "id": "read-file-1",
+      "name": "Read Claims CSV",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -1280,
+        300
+      ],
+      "notes": "Reads sample_claims.csv from D:/Hackathon/Files/. Make sure the file exists at this exact path before running."
+    },
+    {
+      "parameters": {
+        "operation": "fromCsv",
+        "options": {}
+      },
+      "id": "extract-csv-1",
+      "name": "Parse CSV to Items",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -1160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-1",
+      "name": "Loop Over Claims",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "claim_id",
+              "value": "={{ $json.claim_id }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "patient_name",
+              "value": "={{ $json.patient_name }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "policy_number",
+              "value": "={{ $json.policy_number }}",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "diagnosis_code",
+              "value": "={{ $json.diagnosis_code }}",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "treatment_description",
+              "value": "={{ $json.treatment_description }}",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "date_of_service",
+              "value": "={{ $json.date_of_service }}",
+              "type": "string"
+            },
+            {
+              "id": "a7",
+              "name": "claimed_amount",
+              "value": "={{ $json.claimed_amount }}",
+              "type": "number"
+            },
+            {
+              "id": "a8",
+              "name": "notification_email",
+              "value": "={{ $json.notification_email }}",
+              "type": "string"
+            },
+            {
+              "id": "a9",
+              "name": "expected_outcome",
+              "value": "={{ $json.expected_outcome }}",
+              "type": "string"
+            },
+            {
+              "id": "a10",
+              "name": "claim_json",
+              "value": "={{ JSON.stringify({claim_id: $json.claim_id, patient_name: $json.patient_name, policy_number: $json.policy_number, diagnosis_code: $json.diagnosis_code, treatment_description: $json.treatment_description, date_of_service: $json.date_of_service, claimed_amount: $json.claimed_amount}) }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "coordinator-1",
+      "name": "Coordinator Agent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -800,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"llama-3.1-8b-instant\", temperature: 0.2, response_format: { type: \"json_object\" }, messages: [ { role: \"system\", content: \"You are the VALIDATION AGENT in a healthcare claims system. Check the claim JSON for: all required fields present, claimed_amount is a positive number, date_of_service is a valid plausible date, diagnosis_code looks like a valid ICD-10 format, treatment_description is not empty/gibberish. Respond ONLY with strict JSON: {\\\"valid\\\": true|false, \\\"issues\\\": [\\\"...\\\"], \\\"summary\\\": \\\"one sentence\\\"}\" }, { role: \"user\", content: $json.claim_json } ] }) }}",
+        "options": {}
+      },
+      "id": "validation-agent-1",
+      "name": "Validation Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"llama-3.1-8b-instant\", temperature: 0.2, response_format: { type: \"json_object\" }, messages: [ { role: \"system\", content: \"You are the POLICY AGENT in a healthcare claims system. Given a standard health insurance policy (covers standard outpatient/inpatient treatment, diagnostics, surgery, prescribed medication; EXCLUDES cosmetic procedures, experimental treatment, and claims over $50000 without pre-authorization), assess if this claim's treatment_description and diagnosis_code appear to be covered. Respond ONLY with strict JSON: {\\\"covered\\\": true|false, \\\"reason\\\": \\\"...\\\", \\\"requires_preauth\\\": true|false}\" }, { role: \"user\", content: $json.claim_json } ] }) }}",
+        "options": {}
+      },
+      "id": "policy-agent-1",
+      "name": "Policy Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -560,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"llama-3.1-8b-instant\", temperature: 0.2, response_format: { type: \"json_object\" }, messages: [ { role: \"system\", content: \"You are the FRAUD AGENT in a healthcare claims system. Assess fraud risk by checking: does claimed_amount seem unusually high for the described treatment, does treatment_description match diagnosis_code plausibly, are there vague/suspicious descriptions, is date_of_service in the future. Respond ONLY with strict JSON: {\\\"risk_score\\\": 0-100, \\\"flags\\\": [\\\"...\\\"], \\\"recommendation\\\": \\\"low_risk|medium_risk|high_risk\\\"}\" }, { role: \"user\", content: $json.claim_json } ] }) }}",
+        "options": {}
+      },
+      "id": "fraud-agent-1",
+      "name": "Fraud Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -560,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"llama-3.1-8b-instant\", temperature: 0.3, response_format: { type: \"json_object\" }, messages: [ { role: \"system\", content: \"You are the KNOWLEDGE AGENT in a healthcare claims system. Given a diagnosis code and treatment description, provide brief relevant medical/clinical context that would help a claims reviewer (e.g. typical treatment pathway for this diagnosis, typical cost range, whether this combination is medically standard). Respond ONLY with strict JSON: {\\\"context\\\": \\\"2-3 sentences\\\", \\\"typical_cost_range\\\": \\\"...\\\", \\\"medically_standard_combination\\\": true|false}\" }, { role: \"user\", content: $json.claim_json } ] }) }}",
+        "options": {}
+      },
+      "id": "knowledge-agent-1",
+      "name": "Knowledge Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -560,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "id": "merge-1",
+      "name": "Merge Agent Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        -320,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "m1",
+              "name": "claim_id",
+              "value": "={{ $('Coordinator Agent').item.json.claim_id }}",
+              "type": "string"
+            },
+            {
+              "id": "m2",
+              "name": "patient_name",
+              "value": "={{ $('Coordinator Agent').item.json.patient_name }}",
+              "type": "string"
+            },
+            {
+              "id": "m3",
+              "name": "notification_email",
+              "value": "={{ $('Coordinator Agent').item.json.notification_email }}",
+              "type": "string"
+            },
+            {
+              "id": "m4",
+              "name": "claimed_amount",
+              "value": "={{ $('Coordinator Agent').item.json.claimed_amount }}",
+              "type": "number"
+            },
+            {
+              "id": "m9",
+              "name": "expected_outcome",
+              "value": "={{ $('Coordinator Agent').item.json.expected_outcome }}",
+              "type": "string"
+            },
+            {
+              "id": "m5",
+              "name": "validation_result",
+              "value": "={{ $('Validation Agent').item.json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "m6",
+              "name": "policy_result",
+              "value": "={{ $('Policy Agent').item.json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "m7",
+              "name": "fraud_result",
+              "value": "={{ $('Fraud Agent').item.json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "m8",
+              "name": "knowledge_result",
+              "value": "={{ $('Knowledge Agent').item.json.choices[0].message.content }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prep-decision-1",
+      "name": "Prepare Decision Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -100,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "groqApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"llama-3.1-8b-instant\", temperature: 0.2, response_format: { type: \"json_object\" }, messages: [ { role: \"system\", content: \"You are the DECISION AGENT in a healthcare claims system. You receive outputs from four specialist agents: Validation, Policy, Fraud, and Knowledge. Make a final claim decision. Rules of thumb: if validation invalid -> REJECT or MANUAL_REVIEW; if policy not covered -> REJECT; if fraud risk_score >= 70 -> MANUAL_REVIEW or REJECT; if everything looks fine -> APPROVE. Respond ONLY with strict JSON: {\\\"decision\\\": \\\"APPROVE|REJECT|MANUAL_REVIEW\\\", \\\"reasoning\\\": \\\"2-4 sentences explaining the decision referencing the agent findings\\\", \\\"confidence\\\": 0-100}\" }, { role: \"user\", content: JSON.stringify({ validation: $json.validation_result, policy: $json.policy_result, fraud: $json.fraud_result, knowledge: $json.knowledge_result }) } ] }) }}",
+        "options": {}
+      },
+      "id": "decision-agent-1",
+      "name": "Decision Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "claim_id",
+              "value": "={{ $('Prepare Decision Input').item.json.claim_id }}",
+              "type": "string"
+            },
+            {
+              "id": "f2",
+              "name": "patient_name",
+              "value": "={{ $('Prepare Decision Input').item.json.patient_name }}",
+              "type": "string"
+            },
+            {
+              "id": "f3",
+              "name": "notification_email",
+              "value": "={{ $('Prepare Decision Input').item.json.notification_email }}",
+              "type": "string"
+            },
+            {
+              "id": "f4",
+              "name": "claimed_amount",
+              "value": "={{ $('Prepare Decision Input').item.json.claimed_amount }}",
+              "type": "number"
+            },
+            {
+              "id": "f8",
+              "name": "expected_outcome",
+              "value": "={{ $('Prepare Decision Input').item.json.expected_outcome }}",
+              "type": "string"
+            },
+            {
+              "id": "f5",
+              "name": "decision",
+              "value": "={{ JSON.parse($json.choices[0].message.content).decision }}",
+              "type": "string"
+            },
+            {
+              "id": "f6",
+              "name": "reasoning",
+              "value": "={{ JSON.parse($json.choices[0].message.content).reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "f7",
+              "name": "confidence",
+              "value": "={{ JSON.parse($json.choices[0].message.content).confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "f9",
+              "name": "match_expected",
+              "value": "={{ JSON.parse($json.choices[0].message.content).decision === $('Prepare Decision Input').item.json.expected_outcome }}",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "id": "format-final-1",
+      "name": "Format Final Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        360,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "claims-system@yourdomain.com",
+        "toEmail": "={{ $json.notification_email }}",
+        "subject": "=Claim {{ $json.claim_id }} Decision: {{ $json.decision }}",
+        "emailFormat": "html",
+        "html": "=<h2>Healthcare Claim Decision</h2><p><b>Claim ID:</b> {{ $json.claim_id }}</p><p><b>Patient:</b> {{ $json.patient_name }}</p><p><b>Claimed Amount:</b> ${{ $json.claimed_amount }}</p><hr><h3 style=\"color:{{ $json.decision === 'APPROVE' ? 'green' : ($json.decision === 'REJECT' ? 'red' : 'orange') }}\">Decision: {{ $json.decision }}</h3><p><b>Confidence:</b> {{ $json.confidence }}%</p><p><b>Reasoning:</b><br>{{ $json.reasoning }}</p><hr><p style=\"color:gray;font-size:12px\">Automated decision from Healthcare Claims Multi-Agent System (Coordinator, Validation, Policy, Fraud, Knowledge & Decision agents).</p>",
+        "options": {}
+      },
+      "id": "notification-agent-1",
+      "name": "Notification Agent",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        580,
+        220
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_YOUR_SMTP_CREDENTIAL_ID",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Run Batch Job": {
+      "main": [
+        [
+          {
+            "node": "Read Claims CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Claims": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Coordinator Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Coordinator Agent": {
+      "main": [
+        [
+          {
+            "node": "Validation Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Policy Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fraud Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Knowledge Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Policy Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Fraud Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Knowledge Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge Agent Outputs",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge Agent Outputs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Decision Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Decision Input": {
+      "main": [
+        [
+          {
+            "node": "Decision Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Final Result": {
+      "main": [
+        [
+          {
+            "node": "Notification Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification Agent": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Claims CSV": {
+      "main": [
+        [
+          {
+            "node": "Parse CSV to Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CSV to Items": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "healthcare-claims-multiagent-batch-hackathon"
+  }
+}
