@@ -12,5 +12,9 @@ Stack: n8n (free) · Groq LLM (free) · Gmail SMTP (free)
 # Workflow execution
 <img width="1884" height="993" alt="claims_batch_exec" src="https://github.com/user-attachments/assets/f8264b60-5768-486d-ba01-125d8ea4cad0" />
 
+# Sample email notification
+<img width="1359" height="466" alt="sample email" src="https://github.com/user-attachments/assets/f2bef80b-65fb-470c-9b3a-e05b88b36503" />
+
+
 
 
